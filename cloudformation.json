@@ -1,0 +1,174 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "CFT for EC2, Target Group, ALB Rule, and Domain Mapping with Dynamic Parameters",
+  "Parameters": {
+    "ALBDNSName": {
+      "Type": "String",
+      "Description": "DNS name of the existing ALB",
+      "Default": ""
+    },
+    "ALBArn": {
+      "Type": "String",
+      "Description": "The ARN of the existing ALB to attach the listener rule",
+      "Default": ""
+    },
+    "ALBListenerArn": {
+      "Type": "String",
+      "Description": "The ARN of the existing listener where the rule will be added",
+      "Default": ""
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "",
+      "Description": "EC2 instance type (can vary as needed)"
+    },
+    "ImageId": {
+      "Type": "String",
+      "Default": "",
+      "Description": "EC2 AMI ID to launch the EC2 instance"
+    },
+    "KeyName": {
+      "Type": "String",
+      "Description": "EC2 Key Pair for SSH access",
+      "Default": ""
+    },
+    "SecurityGroupIds": {
+      "Type": "CommaDelimitedList",
+      "Default": "",
+      "Description": "Security Group IDs to attach to the EC2 instance"
+    },
+    "SubnetIds": {
+      "Type": "CommaDelimitedList",
+      "Description": "Subnet ID to launch EC2 instance in",
+      "Default": ""
+    },
+    "VpcId": {
+      "Type": "String",
+      "Default": "",
+      "Description": "VPC ID to launch resources"
+    },
+    "TargetGroupName": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Name of the target group"
+    },
+    "PathPattern": {
+      "Type": "String",
+      "Default": "/*",
+      "Description": "Path pattern for ALB listener rule"
+    },
+    "HostedZoneId": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Hosted Zone ID for the Route 53 domain mapping"
+    },
+    "DomainName": {
+      "Type": "String",
+      "Description": "Fully qualified domain name (e.g., example.com)",
+      "Default": ""
+    },
+    "AliasHostedZoneId": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Hosted Zone ID for the ALB (use the appropriate value for your region)"
+    },
+    "EC2InstanceName": {
+      "Type": "String",
+      "Description": "Name for the EC2 instance",
+      "Default": ""
+    }
+  },
+  "Resources": {
+    "MyEC2Instance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": { "Ref": "InstanceType" },
+        "ImageId": { "Ref": "ImageId" },
+        "KeyName": { "Ref": "KeyName" },
+        "SecurityGroupIds": { "Ref": "SecurityGroupIds" },
+        "SubnetId": { "Fn::Select": [0, { "Ref": "SubnetIds" }] },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Ref": "EC2InstanceName" }
+          }
+        ]
+      }
+    },
+    "MyTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": { "Ref": "TargetGroupName" },
+        "Port": 80,
+        "Protocol": "HTTP",
+        "VpcId": { "Ref": "VpcId" },
+        "HealthCheckProtocol": "HTTP",
+        "HealthCheckPath": "/",
+        "HealthCheckPort": "80",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckTimeoutSeconds": 5,
+        "HealthyThresholdCount": 3,
+        "UnhealthyThresholdCount": 3,
+        "Targets": [
+          {
+            "Id": { "Ref": "MyEC2Instance" },
+            "Port": 80
+          }
+        ],
+        "TargetGroupAttributes": [
+          { "Key": "deregistration_delay.timeout_seconds", "Value": "0" },
+          { "Key": "load_balancing.algorithm.type", "Value": "round_robin" },
+          { "Key": "slow_start.duration_seconds", "Value": "0" },
+          { "Key": "stickiness.enabled", "Value": "true" },
+          { "Key": "stickiness.lb_cookie.duration_seconds", "Value": "30" }
+        ],
+        "Matcher": { "HttpCode": "200-499" }
+      }
+    },
+    "MyALBListenerRule": {
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+      "Properties": {
+        "ListenerArn": { "Ref": "ALBListenerArn" },
+        "Priority": 25,
+        "Actions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": { "Ref": "MyTargetGroup" }
+          }
+        ],
+        "Conditions": [
+          {
+            "Field": "host-header",
+            "Values": [{ "Ref": "DomainName" }]
+          }
+        ]
+      }
+    },
+    "MyDomainMappingRecord": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": { "Ref": "HostedZoneId" },
+        "Name": { "Ref": "DomainName" },
+        "Type": "A",
+        "AliasTarget": {
+          "DNSName": { "Ref": "ALBDNSName" },
+          "HostedZoneId": { "Ref": "AliasHostedZoneId" }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "EC2InstanceID": {
+      "Description": "EC2 Instance ID",
+      "Value": { "Ref": "MyEC2Instance" }
+    },
+    "TargetGroupArn": {
+      "Description": "Target Group ARN",
+      "Value": { "Ref": "MyTargetGroup" }
+    },
+    "DomainName": {
+      "Description": "The fully qualified domain name",
+      "Value": { "Ref": "DomainName" }
+    }
+  }
+}

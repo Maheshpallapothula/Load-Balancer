@@ -1,2 +1,2 @@
-# Load-Balancer
-These repo we can intialize a load balancer using nodets
+# mai-events-central-coordinator
+mai-events-central-coordinator
